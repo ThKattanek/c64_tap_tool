@@ -13,4 +13,4 @@ add_compile_options(-Wextra -Wshadow -Wconversion -Wno-unused)
 project(c64_tap_tool)
 
 # Add the executable
-add_executable(c64_tap_tool main.cpp)
+add_executable(c64_tap_tool main.cpp command_line_class.cpp command_line_class.h)
