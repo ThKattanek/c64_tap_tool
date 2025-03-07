@@ -1,1 +1,0 @@
-/usr/bin/g++ -Os -DNDEBUG -rdynamic CMakeFiles/c64_tap_tool.dir/main.cpp.o -o c64_tap_tool 
