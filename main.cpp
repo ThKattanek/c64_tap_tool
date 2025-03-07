@@ -5,6 +5,8 @@
 
 #include "command_line_class.h"
 
+void AnalyzeTAPFile(const char *tap_file);
+
 // Defineren aller Kommandozeilen Parameter
 enum CMD_COMMAND {CMD_HELP,CMD_VERSION, CMD_ANALYZE};
 static const CMD_STRUCT command_list[]{
@@ -37,6 +39,7 @@ int main(int argc, char *argv[])
                 {
                     const char *tap_file = cmd->GetArg(i+1);
                     printf("Analyzing TAP file: %s\n",tap_file);
+                    AnalyzeTAPFile(tap_file);
                 }
                 else
                 {
@@ -60,4 +63,27 @@ int main(int argc, char *argv[])
     }
 
     return 0;
+}
+
+void AnalyzeTAPFile(const char *tap_file)
+{
+    std::ifstream tap_file_stream(tap_file, std::ios::binary);
+    if(tap_file_stream.is_open())
+    {
+        tap_file_stream.seekg(0, std::ios::end);
+        std::streamoff file_size = tap_file_stream.tellg();
+        tap_file_stream.seekg(0, std::ios::beg);
+
+        char *tap_data = new char[file_size];
+        tap_file_stream.read(tap_data, file_size);
+        tap_file_stream.close();
+
+        printf("TAP file size: %d\n",file_size);
+
+        delete[] tap_data;
+    }
+    else
+    {
+        printf("Error opening TAP file: %s\n",tap_file);
+    }
 }

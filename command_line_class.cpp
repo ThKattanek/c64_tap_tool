@@ -73,7 +73,7 @@ CommandLineClass::CommandLineClass(int argc, char *argv[], const char *app_name,
             {
                // printf("%s: Ungültige Option -- %s\n",app_name,command);
 
-				printf("%s: Ungueltige Anzahl der Argumente von -- \"%s\"\n",app_name, this->command_arg[i]);
+                printf("%s: Invalid number of arguments for -- \"%s\"\n", app_name, this->command_arg[i]);
                 command_count = -1;
                 break;
             }
@@ -177,7 +177,7 @@ int CommandLineClass::GetArgInt(int number, bool *err)
         }
 
         if(*err)
-            printf("%s: Ein Argument konnte nicht in eine Zahl umgewnadelt werden! -- %s\n",app_name,arg);
+            printf("%s: An argument could not be converted to a number! -- %s\n", app_name, arg);
     }
     else
     {
@@ -188,7 +188,7 @@ int CommandLineClass::GetArgInt(int number, bool *err)
 
 void CommandLineClass::ShowHelp()
 {
-	printf("\nProgrammaufruf: %s [OPTIONS]\n\nFolgende Optionen stehen Ihnen zur Verfuegung:\n\n", app_name);
+    printf("\nUsage: %s [OPTIONS]\n\nThe following options are available:\n\n", app_name);
 
     for(int i=0; i<all_commands_list_count; i++)
     {
@@ -315,7 +315,7 @@ bool CommandLineClass::FoundCommand(int command)
 void CommandLineClass::OutErrorMsg(const char *msg, const char *help_opt)
 {
     printf("%s: %s\n",app_name,msg);
-    printf("\"%s %s\" liefert weitere Informationen.\n",app_name, help_opt);
+    printf("\"%s %s\" provides more information.\n", app_name, help_opt);
 }
 
 void CommandLineClass::OutUnknowOptionError(const char *command, bool is_long)
@@ -323,11 +323,11 @@ void CommandLineClass::OutUnknowOptionError(const char *command, bool is_long)
     if(!is_long)
     {
         // Short Option
-		printf("%s: Ungueltige Option -- %s\n",app_name,command);
+        printf("%s: Invalid option -- %s\n", app_name, command);
     }
     else
     {
         // Long Option
-		printf("%s: Ungueltige Option \"--%s\"\n",app_name,command);
+		printf("%s: Invalid option \"--%s\"\n",app_name,command);
     }
 }
