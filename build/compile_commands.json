@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/thorsten/Programmierung/Aktuelle_Projekte/c64_tap_tool/build",
+  "command": "/usr/bin/g++   -Os -DNDEBUG -std=gnu++11 -O0 -pedantic -Wfatal-errors -Wall -Wextra -Wshadow -Wconversion -Wno-unused -o CMakeFiles/c64_tap_tool.dir/main.cpp.o -c /home/thorsten/Programmierung/Aktuelle_Projekte/c64_tap_tool/main.cpp",
+  "file": "/home/thorsten/Programmierung/Aktuelle_Projekte/c64_tap_tool/main.cpp",
+  "output": "CMakeFiles/c64_tap_tool.dir/main.cpp.o"
+}
+]

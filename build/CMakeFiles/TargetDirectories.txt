@@ -1,0 +1,3 @@
+/home/thorsten/Programmierung/Aktuelle_Projekte/c64_tap_tool/build/CMakeFiles/c64_tap_tool.dir
+/home/thorsten/Programmierung/Aktuelle_Projekte/c64_tap_tool/build/CMakeFiles/edit_cache.dir
+/home/thorsten/Programmierung/Aktuelle_Projekte/c64_tap_tool/build/CMakeFiles/rebuild_cache.dir
