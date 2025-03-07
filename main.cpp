@@ -78,7 +78,7 @@ void AnalyzeTAPFile(const char *tap_file)
         tap_file_stream.read(tap_data, file_size);
         tap_file_stream.close();
 
-        printf("TAP file size: %d\n",file_size);
+        printf("TAP file size: %ld\n", static_cast<long>(file_size));
 
         delete[] tap_data;
     }

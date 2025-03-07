@@ -2,10 +2,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-CommandLineClass::CommandLineClass(int argc, char *argv[], const char *app_name, const CMD_STRUCT *command_list, int command_list_count)
+CommandLineClass::CommandLineClass(int argc, char *argv[], const char *application_name, const CMD_STRUCT *cmd_list, int command_list_count)
 {
-    this->app_name = app_name;
-    this->all_commands_list = command_list;
+    this->app_name = application_name;
+    this->all_commands_list = cmd_list;
     this->all_commands_list_count = command_list_count;
 
     command_count = 0;
