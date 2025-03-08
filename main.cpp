@@ -6,6 +6,20 @@
 #include "command_line_class.h"
 #include <string.h>
 
+// TAP Pulse Lengths (from VICE)
+// Short Pulse between 288 and 432 Cycles
+// Medium Pulse between 440 and 584 Cycles
+// Long Pulse between 592 and 800 Cycles
+// Cycles per second (PAL): 985248
+// Cycles per second (NTSC): 1022727
+
+#define SHORT_PULSE_MIN 288     // 0x24 (Databyte in TAP file)
+#define SHORT_PULSE_MAX 432     // 0x36 (Databyte in TAP file)
+#define MEDIUM_PULSE_MIN 440    // 0x37 (Databyte in TAP file)
+#define MEDIUM_PULSE_MAX 584    // 0x49 (Databyte in TAP file)
+#define LONG_PULSE_MIN 592      // 0x4A (Databyte in TAP file)
+#define LONG_PULSE_MAX 800      // 0x64 (Databyte in TAP file)
+
 void AnalyzeTAPFile(const char *tap_file);
 
 // Defineren aller Kommandozeilen Parameter
@@ -19,6 +33,7 @@ static const CMD_STRUCT command_list[]{
 #define command_list_count sizeof(command_list) / sizeof(command_list[0])
 
 CommandLineClass *cmd;
+uint8_t tap_version;
 
 int main(int argc, char *argv[]) 
 {
@@ -75,12 +90,111 @@ bool IsTAPFile(uint8_t *data, uint32_t size)
         return false;
     }
 
+    // TAP Version
+    tap_version = data[sizeof(header)-1];
+
     return true;
 }
 
-int FoundSync(uint8_t *data, uint32_t size)
+uint32_t GetNetxtPulse(uint8_t *data, uint32_t size, uint32_t &pos)
 {
-     return 0;
+    uint32_t pulse_length = data[pos];
+
+    if(pulse_length == 0x00)
+    {
+        if(tap_version == 0)
+        {
+            pulse_length = 256 * 8;
+        }
+            
+        if(tap_version == 1)
+        {
+            pulse_length = data[pos+1];
+            pos += 3;
+        }
+    }
+    else
+    {
+        pulse_length *= 8;
+    }
+
+    return pulse_length;
+}
+
+bool FoundHeader(uint8_t *data, uint32_t size)
+{
+    uint32_t pos = 0x14;
+
+    u_int32_t sync_start = 0;
+    u_int32_t sync_end = 0;
+    uint32_t sync_pulse_count = 0;
+    bool found_sync = false;
+
+    while(pos < size)
+    {
+        uint32_t pulse_length = data[pos];
+
+        if(pulse_length == 0x00)
+        {
+            if(tap_version == 0)
+            {
+                pulse_length = 256 * 8;
+            }
+                
+            if(tap_version == 1)
+            {
+                pulse_length = data[pos+1] | data[pos+2] << 8 | data[pos+3] << 16;
+                pos += 3;
+            }
+        }
+        else
+        {
+            pulse_length *= 8;
+        }
+
+        if(pulse_length >= SHORT_PULSE_MIN && pulse_length <= SHORT_PULSE_MAX)
+        {
+            // Short Pulse
+            sync_pulse_count++;
+
+            if((sync_pulse_count > 1) && !found_sync)
+            {
+                sync_start = pos-1;
+                found_sync = true;
+            }
+        }
+        else if(pulse_length >= MEDIUM_PULSE_MIN && pulse_length <= MEDIUM_PULSE_MAX)
+        {
+            // Medium Pulse
+            if(found_sync)
+            {
+                sync_end = pos-1;
+                found_sync = false;
+                if(sync_end - sync_start >= 30)
+                {
+                    printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
+                }
+            }
+            sync_pulse_count = 0;
+        }
+        else if(pulse_length >= LONG_PULSE_MIN && pulse_length <= LONG_PULSE_MAX)
+        {
+            // Long Pulse
+            if(found_sync)
+            {
+                sync_end = pos-1;
+                found_sync = false;
+                if(sync_end - sync_start >= 60)
+                {
+                    printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
+                }
+            }
+            sync_pulse_count = 0;
+        }
+        pos++;
+    }   
+
+    return 0;
 }
 
 void AnalyzeTAPFile(const char *tap_file)
@@ -101,7 +215,9 @@ void AnalyzeTAPFile(const char *tap_file)
         if(IsTAPFile(tap_data, (uint32_t)file_size))
         {
             printf("TAP file is valid.\n");
-            FoundSync(tap_data, (uint32_t)file_size);
+            printf("TAP version: %d\n",tap_version);
+
+            FoundHeader(tap_data, (uint32_t)file_size);
         }
         else
         {
