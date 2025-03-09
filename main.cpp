@@ -20,6 +20,8 @@
 #define LONG_PULSE_MIN 592      // 0x4A (Databyte in TAP file)
 #define LONG_PULSE_MAX 800      // 0x64 (Databyte in TAP file)
 
+enum PULSE_TYPE {SHORT_PULSE, MEDIUM_PULSE, LONG_PULSE};
+
 void AnalyzeTAPFile(const char *tap_file);
 
 // Defineren aller Kommandozeilen Parameter
@@ -96,30 +98,7 @@ bool IsTAPFile(uint8_t *data, uint32_t size)
     return true;
 }
 
-uint32_t GetNetxtPulse(uint8_t *data, uint32_t size, uint32_t &pos)
-{
-    uint32_t pulse_length = data[pos];
 
-    if(pulse_length == 0x00)
-    {
-        if(tap_version == 0)
-        {
-            pulse_length = 256 * 8;
-        }
-            
-        if(tap_version == 1)
-        {
-            pulse_length = data[pos+1];
-            pos += 3;
-        }
-    }
-    else
-    {
-        pulse_length *= 8;
-    }
-
-    return pulse_length;
-}
 
 bool FoundHeader(uint8_t *data, uint32_t size)
 {
@@ -129,6 +108,12 @@ bool FoundHeader(uint8_t *data, uint32_t size)
     u_int32_t sync_end = 0;
     uint32_t sync_pulse_count = 0;
     bool found_sync = false;
+
+    uint8_t last_pulse = 0;  // 0 = Short, 1 = Medium, 2 = Long
+    uint8_t pulse_counter = 0;
+    bool byte_reading = false;
+    uint8_t parity_bit = 0;
+    uint8_t data_byte = 0;
 
     while(pos < size)
     {
@@ -155,6 +140,7 @@ bool FoundHeader(uint8_t *data, uint32_t size)
         if(pulse_length >= SHORT_PULSE_MIN && pulse_length <= SHORT_PULSE_MAX)
         {
             // Short Pulse
+            pulse_counter++;
             sync_pulse_count++;
 
             if((sync_pulse_count > 1) && !found_sync)
@@ -162,34 +148,81 @@ bool FoundHeader(uint8_t *data, uint32_t size)
                 sync_start = pos-1;
                 found_sync = true;
             }
+
+            if(byte_reading)
+            {
+                if(((pulse_counter & 1) == 0) && (last_pulse == MEDIUM_PULSE))
+                {
+                    // Bit is 1
+                    data_byte >>= 1;
+                    data_byte |= 0x80;
+                    if(pulse_counter == 16)
+                    {   
+                        printf("%2.2x,",data_byte);
+                        byte_reading = false;
+                    }
+                }
+            }
+
+            last_pulse = SHORT_PULSE;
         }
         else if(pulse_length >= MEDIUM_PULSE_MIN && pulse_length <= MEDIUM_PULSE_MAX)
         {
             // Medium Pulse
+            pulse_counter++;
+
             if(found_sync)
             {
                 sync_end = pos-1;
                 found_sync = false;
-                if(sync_end - sync_start >= 30)
+                if(sync_end - sync_start >= 1) 
                 {
-                    printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
+                    //printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
                 }
             }
+
+            if(byte_reading)
+            {
+                if(((pulse_counter & 1) == 0) && (last_pulse == SHORT_PULSE))
+                {
+                    // Bit is 0
+                    data_byte >>= 1;
+                    data_byte &= 0x7f;
+                    if(pulse_counter == 16)
+                    {   
+                        printf("%2.2x,",data_byte);
+                        byte_reading = false;
+                    }
+                }
+            }
+            
+            // Check if last pulse was a short pulse the is here a ByteMarker
+            if(last_pulse == LONG_PULSE)
+            {
+                //printf("ByteMarker: %4.4x\n",pos-1);
+                byte_reading = true;
+                pulse_counter = 0;
+            }
+
             sync_pulse_count = 0;
+            last_pulse = MEDIUM_PULSE;
         }
         else if(pulse_length >= LONG_PULSE_MIN && pulse_length <= LONG_PULSE_MAX)
         {
             // Long Pulse
+            pulse_counter++;
+
             if(found_sync)
             {
                 sync_end = pos-1;
                 found_sync = false;
                 if(sync_end - sync_start >= 60)
                 {
-                    printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
+                    //printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
                 }
             }
             sync_pulse_count = 0;
+            last_pulse = LONG_PULSE;    
         }
         pos++;
     }   
