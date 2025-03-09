@@ -306,7 +306,14 @@ bool FoundHeader(uint8_t *data, uint32_t size)
         }
         else
         {
-            printf("Error reading byte\n");
+            if(pos < size)
+            {
+                printf("Error reading byte at position %4.4x\n",pos);
+            }
+            else
+            {
+                printf("End of TAP file reached.\n");
+            }
         }  
     }   
 
