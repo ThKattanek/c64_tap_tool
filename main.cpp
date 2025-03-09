@@ -12,7 +12,6 @@
 // Long Pulse between 592 and 800 Cycles
 // Cycles per second (PAL): 985248
 // Cycles per second (NTSC): 1022727
-
 #define SHORT_PULSE_MIN 288     // 0x24 (Databyte in TAP file)
 #define SHORT_PULSE_MAX 432     // 0x36 (Databyte in TAP file)
 #define MEDIUM_PULSE_MIN 440    // 0x37 (Databyte in TAP file)
@@ -20,7 +19,14 @@
 #define LONG_PULSE_MIN 592      // 0x4A (Databyte in TAP file)
 #define LONG_PULSE_MAX 800      // 0x64 (Databyte in TAP file)
 
-enum PULSE_TYPE {SHORT_PULSE, MEDIUM_PULSE, LONG_PULSE};
+// TAP Pulse Lengths for send to C64
+// Cycles per second (PAL): 985248
+// Cycles per second (NTSC): 1022727
+#define SHORT_PULSE_LENGTH 360
+#define MEDIUM_PULSE_LENGTH 524
+#define LONG_PULSE_LENGTH 687
+
+enum PULSE_TYPE {SHORT_PULSE, MEDIUM_PULSE, LONG_PULSE, UNKNOWN_PULSE};
 
 void AnalyzeTAPFile(const char *tap_file);
 
@@ -98,12 +104,61 @@ bool IsTAPFile(uint8_t *data, uint32_t size)
     return true;
 }
 
-
-
-bool FoundHeader(uint8_t *data, uint32_t size)
+/// @brief  Get the next pulse from the TAP file
+/// @param data  Pointer to the TAP file data
+/// @param pos  Current position in the TAP file data
+/// @return  Type of the pulse (Short, Medium, Long, Unknown)
+uint8_t GetNextPulse(uint8_t *data, uint32_t &pos)
 {
-    uint32_t pos = 0x14;
+    uint32_t pulse_length = data[pos];
+    uint8_t pulse_type;
+    
+    if(pulse_length == 0x00)
+    {
+        if(tap_version == 0)
+        {
+            pulse_length = 256 * 8;
+        }
+            
+        if(tap_version == 1)
+        {
+            pulse_length = data[pos+1] | data[pos+2] << 8 | data[pos+3] << 16;
+            pos += 3;
+        }
+    }
+    else
+    {
+        pulse_length *= 8;
+    }
 
+    if(pulse_length >= SHORT_PULSE_MIN && pulse_length <= SHORT_PULSE_MAX)
+        {
+            pulse_type = SHORT_PULSE;
+        }
+        else if(pulse_length >= MEDIUM_PULSE_MIN && pulse_length <= MEDIUM_PULSE_MAX)
+        {
+            pulse_type = MEDIUM_PULSE;
+        }
+        else if(pulse_length >= LONG_PULSE_MIN && pulse_length <= LONG_PULSE_MAX)
+        {
+            pulse_type = LONG_PULSE;
+        }
+        else
+        {
+            pulse_type = UNKNOWN_PULSE;
+        }
+
+    return pulse_type;
+}
+
+/// @brief  Get the next byte from the TAP file
+/// @param data  Pointer to the TAP file data
+/// @param size  Size of the TAP file data
+/// @param pos  Current position in the TAP file data
+/// @param error  Error flag
+/// @return  Next byte from the TAP file
+uint8_t GetNextByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &error)
+{
     u_int32_t sync_start = 0;
     u_int32_t sync_end = 0;
     uint32_t sync_pulse_count = 0;
@@ -112,33 +167,16 @@ bool FoundHeader(uint8_t *data, uint32_t size)
     uint8_t last_pulse = 0;  // 0 = Short, 1 = Medium, 2 = Long
     uint8_t pulse_counter = 0;
     bool byte_reading = false;
-    uint8_t parity_bit = 0;
+    uint8_t parity_bit = 1;
     uint8_t data_byte = 0;
 
-    while(pos < size)
+    while (pos < size)
     {
-        uint32_t pulse_length = data[pos];
+        uint8_t pulse_type = GetNextPulse(data, pos);
 
-        if(pulse_length == 0x00)
+        switch (pulse_type)
         {
-            if(tap_version == 0)
-            {
-                pulse_length = 256 * 8;
-            }
-                
-            if(tap_version == 1)
-            {
-                pulse_length = data[pos+1] | data[pos+2] << 8 | data[pos+3] << 16;
-                pos += 3;
-            }
-        }
-        else
-        {
-            pulse_length *= 8;
-        }
-
-        if(pulse_length >= SHORT_PULSE_MIN && pulse_length <= SHORT_PULSE_MAX)
-        {
+        case PULSE_TYPE::SHORT_PULSE:
             // Short Pulse
             pulse_counter++;
             sync_pulse_count++;
@@ -154,20 +192,29 @@ bool FoundHeader(uint8_t *data, uint32_t size)
                 if(((pulse_counter & 1) == 0) && (last_pulse == MEDIUM_PULSE))
                 {
                     // Bit is 1
-                    data_byte >>= 1;
-                    data_byte |= 0x80;
-                    if(pulse_counter == 16)
-                    {   
-                        printf("%2.2x,",data_byte);
-                        byte_reading = false;
+                    if(pulse_counter <= 16)
+                    {
+                        data_byte >>= 1;
+                        data_byte |= 0x80;
+                        parity_bit ^= 1;
+                    }
+                    else if(pulse_counter == 18)
+                    {
+                        // Parity Check
+                        if(parity_bit == 0)
+                        {
+                            error = true;
+                        }
+                        else error = false;
+                        return data_byte;
                     }
                 }
             }
 
             last_pulse = SHORT_PULSE;
-        }
-        else if(pulse_length >= MEDIUM_PULSE_MIN && pulse_length <= MEDIUM_PULSE_MAX)
-        {
+            break;
+        
+        case PULSE_TYPE::MEDIUM_PULSE:
             // Medium Pulse
             pulse_counter++;
 
@@ -186,29 +233,36 @@ bool FoundHeader(uint8_t *data, uint32_t size)
                 if(((pulse_counter & 1) == 0) && (last_pulse == SHORT_PULSE))
                 {
                     // Bit is 0
-                    data_byte >>= 1;
-                    data_byte &= 0x7f;
-                    if(pulse_counter == 16)
-                    {   
-                        printf("%2.2x,",data_byte);
-                        byte_reading = false;
+                    if(pulse_counter <= 16)
+                    {
+                        data_byte >>= 1;
+                        data_byte &= 0x7f;
+                        parity_bit ^= 0;
                     }
+                    else if(pulse_counter == 18)
+                    {
+                        // Parity Check
+                        if(parity_bit == 1)
+                        {
+                            error = true;
+                        }
+                        else error = false;
+                        return data_byte;
+                   }
                 }
             }
             
             // Check if last pulse was a short pulse the is here a ByteMarker
             if(last_pulse == LONG_PULSE)
             {
-                //printf("ByteMarker: %4.4x\n",pos-1);
                 byte_reading = true;
                 pulse_counter = 0;
             }
 
             sync_pulse_count = 0;
             last_pulse = MEDIUM_PULSE;
-        }
-        else if(pulse_length >= LONG_PULSE_MIN && pulse_length <= LONG_PULSE_MAX)
-        {
+            break;
+        case PULSE_TYPE::LONG_PULSE:
             // Long Pulse
             pulse_counter++;
 
@@ -222,9 +276,38 @@ bool FoundHeader(uint8_t *data, uint32_t size)
                 }
             }
             sync_pulse_count = 0;
-            last_pulse = LONG_PULSE;    
+            last_pulse = LONG_PULSE;   
+            break;
+
+        case PULSE_TYPE::UNKNOWN_PULSE:
+            /* code */
+            break;
+
+        default:
+            break;
         }
         pos++;
+    }
+    error = true;
+    return 0;
+}
+
+bool FoundHeader(uint8_t *data, uint32_t size)
+{
+    uint32_t pos = 0X14;
+    bool error;
+
+    while(pos < size)
+    {
+        uint8_t data_byte = GetNextByte(data, size, pos, error);
+        if(!error)
+        {
+            printf("%2.2x,", data_byte);
+        }
+        else
+        {
+            printf("Error reading byte\n");
+        }  
     }   
 
     return 0;
