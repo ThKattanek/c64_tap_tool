@@ -57,7 +57,7 @@ CommandLineClass::CommandLineClass(int argc, char *argv[], const char *applicati
         if(!CheckArg(i))
         {
             uint16_t arg_count = 0;
-            for(uint16_t j=i+1; j<command_count; j++)
+            for(int j=i+1; j<command_count; j++)
             {
                 if(CheckArg(j))
                 {
