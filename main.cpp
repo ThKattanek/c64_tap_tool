@@ -43,6 +43,16 @@ static const CMD_STRUCT command_list[]{
 CommandLineClass *cmd;
 uint8_t tap_version;
 
+struct TAP_BLOCK    // C64 Kernal TAP Block
+{
+    uint8_t first_countdown_sequence[9];
+    uint8_t data_payload[192];
+    uint8_t checksum;
+    uint8_t second_countdown_sequence[9];
+    uint8_t data_payload_backup[192];
+    uint8_t checksum_backup;
+};
+
 int main(int argc, char *argv[]) 
 {
     cmd = new CommandLineClass(argc, argv, "c64_tap_tool", command_list, command_list_count);
@@ -297,12 +307,27 @@ bool FoundHeader(uint8_t *data, uint32_t size)
     uint32_t pos = 0X14;
     bool error;
 
+    int byte_counter = 0;
+
+    TAP_BLOCK *tap_block = new TAP_BLOCK;
+    uint8_t *block = (uint8_t*)tap_block;
+
+    int block_counter = 0;
+
     while(pos < size)
     {
         uint8_t data_byte = GetNextByte(data, size, pos, error);
         if(!error)
         {
-            printf("%2.2x,", data_byte);
+            block[byte_counter] = data_byte;
+            byte_counter++;
+            //printf("%2.2x,", data_byte);
+            if (byte_counter == sizeof(TAP_BLOCK))
+            {
+                block_counter++;
+                byte_counter = 0;
+                printf("Block found.\n");
+            }
         }
         else
         {
@@ -316,6 +341,9 @@ bool FoundHeader(uint8_t *data, uint32_t size)
             }
         }  
     }   
+
+    printf("ByteCounter: %d\n", byte_counter);
+    printf("BlockCounter: %d\n", block_counter);
 
     return 0;
 }
