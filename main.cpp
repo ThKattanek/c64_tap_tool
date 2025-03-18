@@ -167,7 +167,7 @@ uint8_t GetNextPulse(uint8_t *data, uint32_t &pos)
 /// @param pos  Current position in the TAP file data
 /// @param error  Error flag
 /// @return  Next byte from the TAP file
-uint8_t GetNextByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &error)
+uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &error)
 {
     u_int32_t sync_start = 0;
     u_int32_t sync_end = 0;
@@ -302,31 +302,85 @@ uint8_t GetNextByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &error)
     return 0;
 }
 
-bool FoundHeader(uint8_t *data, uint32_t size)
+int AnalyzeKernalBlock(TAP_BLOCK *block)
 {
-    uint32_t pos = 0X14;
+    // Check if first countdown sequence is correct
+    uint8_t start_countdown_first = 0x89;
+    uint8_t start_countdown_second = 0x09;
+    for(int i=0; i<9; i++)
+    {
+        if(block->first_countdown_sequence[i] != start_countdown_first)
+        {
+            return -1;
+        }
+        
+        if(block->second_countdown_sequence[i] != start_countdown_second)
+        {
+            return -1;
+        }   
+
+        start_countdown_first--;
+        start_countdown_second--;
+    }
+
+    // Check if checksum is correct
+    uint8_t checksum = 0;
+    uint8_t checksum_backup = 0;
+
+    for(int i=0; i<192; i++)
+    {
+        checksum ^= block->data_payload[i];
+        checksum_backup ^= block->data_payload_backup[i];
+    }   
+
+    if(checksum != block->checksum)
+    {
+        printf("Checksum error in payload data\n");
+        return -1;
+    }
+
+    if(checksum_backup != block->checksum_backup)
+    {
+        printf("Checksum error in payload backup data\n");
+        return -1;
+    }
+
+    return 0; 
+}
+
+bool FoundKernalHeaders(uint8_t *data, uint32_t size)
+{
+    uint32_t pos = 0X14;    // start data's at position 0x14 in TAP file 
     bool error;
 
     int byte_counter = 0;
+    int block_byte_counter = 0;
+    int block_counter = 0;
 
     TAP_BLOCK *tap_block = new TAP_BLOCK;
     uint8_t *block = (uint8_t*)tap_block;
 
-    int block_counter = 0;
-
     while(pos < size)
     {
-        uint8_t data_byte = GetNextByte(data, size, pos, error);
+        uint8_t data_byte = GetNextKernalByte(data, size, pos, error);
         if(!error)
         {
-            block[byte_counter] = data_byte;
             byte_counter++;
-            //printf("%2.2x,", data_byte);
-            if (byte_counter == sizeof(TAP_BLOCK))
+            
+            block[block_byte_counter] = data_byte;
+            block_byte_counter++;
+            if (block_byte_counter == sizeof(TAP_BLOCK))
             {
-                block_counter++;
-                byte_counter = 0;
-                printf("Block found.\n");
+                block_byte_counter = 0;
+                if(AnalyzeKernalBlock(tap_block) < 0)
+                {
+                    printf("Not Kernal block found! %d\n",block_counter);
+                }
+                else
+                {
+                    block_counter++;
+                    printf("Kernal block found! %d\n",block_counter);
+                }
             }
         }
         else
@@ -368,7 +422,7 @@ void AnalyzeTAPFile(const char *tap_file)
             printf("TAP file is valid.\n");
             printf("TAP version: %d\n",tap_version);
 
-            FoundHeader(tap_data, (uint32_t)file_size);
+            FoundKernalHeaders(tap_data, (uint32_t)file_size);
         }
         else
         {

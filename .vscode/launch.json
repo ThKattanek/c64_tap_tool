@@ -10,7 +10,7 @@
     "type": "cppdbg",
     "request": "launch",
     "program": "${workspaceFolder}/build/c64_tap_tool",
-    "args": ["--analyze", "${workspaceFolder}/build/6_Pak_Side_1.tap"],
+    "args": ["--analyze", "${workspaceFolder}/build/hello_world.tap"],
     "stopAtEntry": false,
     "cwd": "${workspaceFolder}",
     "environment": [],
