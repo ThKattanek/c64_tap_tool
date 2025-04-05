@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <vector>
 
 #define VERSION_STRING "0.1"
 
@@ -27,6 +28,8 @@
 #define LONG_PULSE_LENGTH 687
 
 enum PULSE_TYPE {SHORT_PULSE, MEDIUM_PULSE, LONG_PULSE, UNKNOWN_PULSE};
+
+typedef std::vector<uint8_t> ByteVector;
 
 void AnalyzeTAPFile(const char *tap_file);
 
@@ -167,7 +170,7 @@ uint8_t GetNextPulse(uint8_t *data, uint32_t &pos)
 /// @param pos  Current position in the TAP file data
 /// @param error  Error flag
 /// @return  Next byte from the TAP file
-uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &error)
+uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &error, bool &start_new_block)
 {
     u_int32_t sync_start = 0;
     u_int32_t sync_end = 0;
@@ -179,6 +182,9 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
     bool byte_reading = false;
     uint8_t parity_bit = 1;
     uint8_t data_byte = 0;
+
+    start_new_block = false;
+    error = false;
 
     while (pos < size)
     {
@@ -232,9 +238,9 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
             {
                 sync_end = pos-1;
                 found_sync = false;
-                if(sync_end - sync_start >= 1) 
+                if(sync_end - sync_start >= 2) 
                 {
-                    //printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
+                    start_new_block = true;
                 }
             }
 
@@ -254,6 +260,7 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
                         // Parity Check
                         if(parity_bit == 1)
                         {
+                            printf("Parity Error: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
                             error = true;
                         }
                         else error = false;
@@ -280,9 +287,9 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
             {
                 sync_end = pos-1;
                 found_sync = false;
-                if(sync_end - sync_start >= 60)
+                if(sync_end - sync_start >= 2)
                 {
-                    //printf("Found Syncronization: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
+                    start_new_block = true;
                 }
             }
             sync_pulse_count = 0;
@@ -291,6 +298,7 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
 
         case PULSE_TYPE::UNKNOWN_PULSE:
             /* code */
+                //printf("Unknown Pulse at: %4.4x\n", pos);
             break;
 
         default:
@@ -348,39 +356,32 @@ int AnalyzeKernalBlock(TAP_BLOCK *block)
     return 0; 
 }
 
-bool FoundKernalHeaders(uint8_t *data, uint32_t size)
+bool FindAllKernalBlocks(uint8_t *data, uint32_t size)
 {
+    std::vector<ByteVector> block_list;
+
     uint32_t pos = 0X14;    // start data's at position 0x14 in TAP file 
     bool error;
+    bool start_new_block;
 
-    int byte_counter = 0;
-    int block_byte_counter = 0;
-    int block_counter = 0;
-
-    TAP_BLOCK *tap_block = new TAP_BLOCK;
-    uint8_t *block = (uint8_t*)tap_block;
+    ByteVector *current_block;
 
     while(pos < size)
     {
-        uint8_t data_byte = GetNextKernalByte(data, size, pos, error);
+        uint8_t data_byte = GetNextKernalByte(data, size, pos, error, start_new_block);
         if(!error)
         {
-            byte_counter++;
-            
-            block[block_byte_counter] = data_byte;
-            block_byte_counter++;
-            if (block_byte_counter == sizeof(TAP_BLOCK))
+            if(start_new_block)
             {
-                block_byte_counter = 0;
-                if(AnalyzeKernalBlock(tap_block) < 0)
-                {
-                    printf("Not Kernal block found! %d\n",block_counter);
-                }
-                else
-                {
-                    block_counter++;
-                    printf("Kernal block found! %d\n",block_counter);
-                }
+                // Start new block
+                block_list.push_back(ByteVector());
+                current_block = &block_list.back();
+                current_block->push_back(data_byte);
+            }
+            else
+            {
+                // Add byte to current block
+                current_block->push_back(data_byte);
             }
         }
         else
@@ -394,12 +395,11 @@ bool FoundKernalHeaders(uint8_t *data, uint32_t size)
                 printf("End of TAP file reached.\n");
             }
         }  
-    }   
+    }
 
-    printf("ByteCounter: %d\n", byte_counter);
-    printf("BlockCounter: %d\n", block_counter);
+    printf("BlockLsit size: %ld\n", block_list.size());
 
-    return 0;
+    return false;
 }
 
 void AnalyzeTAPFile(const char *tap_file)
@@ -421,8 +421,7 @@ void AnalyzeTAPFile(const char *tap_file)
         {
             printf("TAP file is valid.\n");
             printf("TAP version: %d\n",tap_version);
-
-            FoundKernalHeaders(tap_data, (uint32_t)file_size);
+            FindAllKernalBlocks(tap_data, (uint32_t)file_size);
         }
         else
         {
