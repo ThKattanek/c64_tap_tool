@@ -373,7 +373,7 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size)
         {
             if(start_new_block)
             {
-                // Start new block
+                // Start new block and add first byte to it
                 block_list.push_back(ByteVector());
                 current_block = &block_list.back();
                 current_block->push_back(data_byte);
@@ -397,7 +397,27 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size)
         }  
     }
 
-    printf("BlockLsit size: %ld\n", block_list.size());
+    printf("Block Count: %ld\n", block_list.size());
+
+    for(int i=0; i<block_list.size(); i++)
+    {
+        printf("Block %d Size: %ld [CRC: ", i, block_list[i].size());
+        uint8_t crc = 0;
+        for(int j=9; j<block_list[i].size()-1; j++)
+        {
+            crc ^= block_list[i][j];
+        }
+        if(crc == block_list[i].back())
+        {
+            printf("OK]\n");
+        }
+        else
+        {
+            printf("Error]\n");
+        }
+
+    }
+
 
     return false;
 }
