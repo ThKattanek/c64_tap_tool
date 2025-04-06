@@ -2,6 +2,8 @@
 #include <fstream>
 #include <vector>
 
+using namespace std;
+
 #define VERSION_STRING "0.1"
 
 #include "command_line_class.h"
@@ -30,6 +32,7 @@
 enum PULSE_TYPE {SHORT_PULSE, MEDIUM_PULSE, LONG_PULSE, UNKNOWN_PULSE};
 
 typedef std::vector<uint8_t> ByteVector;
+vector<ByteVector> current_block_list;
 
 void AnalyzeTAPFile(const char *tap_file);
 
@@ -46,16 +49,29 @@ static const CMD_STRUCT command_list[]{
 CommandLineClass *cmd;
 uint8_t tap_version;
 
-struct TAP_BLOCK    // C64 Kernal TAP Block
+/// TAP Block Header
+/// @brief  Kernal Header Block
+/// @note   The Kernal Header Block is used to store the header information
+///         of a TAP file. It contains the start and end address of the block,
+///         the filename displayed on the C64, and the filename not displayed.
+///         The header_typer is used to identify the type of block.
+///         The filename displayed is limited to 16 characters, while the
+///         filename not displayed can be up to 171 characters long.
+///         The start and end address are 16-bit values, which means they can
+///         represent addresses from 0x0000 to 0xFFFF.
+struct KERNAL_HEADER_BLOCK    // C64 Kernal Header TAP Block
 {
-    uint8_t first_countdown_sequence[9];
-    uint8_t data_payload[192];
-    uint8_t checksum;
-    uint8_t second_countdown_sequence[9];
-    uint8_t data_payload_backup[192];
-    uint8_t checksum_backup;
+    uint8_t header_typer;
+    uint16_t start_address;
+    uint16_t end_address;
+    char filename_dispayed[16];
+    char filename_not_displayed[171];
 };
 
+/// @brief  Main function of the program
+/// @param argc      
+/// @param argv 
+/// @return 
 int main(int argc, char *argv[]) 
 {
     cmd = new CommandLineClass(argc, argv, "c64_tap_tool", command_list, command_list_count);
@@ -102,6 +118,12 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+/// @brief  Check if the given data is a valid TAP file
+/// @param data  Pointer to the TAP file data
+/// @param size  Size of the TAP file data
+/// @return  True if the data is a valid TAP file, false otherwise
+/// @note   The TAP file must start with the string "C64-TAPE-RAW"
+///         and the version number must be present.
 bool IsTAPFile(uint8_t *data, uint32_t size)
 {
     // Prüfe ob am Anfang der Datei C64-TAPE_RAW steht
@@ -310,56 +332,13 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
     return 0;
 }
 
-int AnalyzeKernalBlock(TAP_BLOCK *block)
+/// @brief  Find all kernal blocks in the TAP file
+/// @param data  Pointer to the TAP file data
+/// @param size  Size of the TAP file data
+/// @param block_list  List of kernal blocks
+/// @return  True if all blocks are found, false otherwise
+bool FindAllKernalBlocks(uint8_t *data, uint32_t size, vector<ByteVector> &block_list)
 {
-    // Check if first countdown sequence is correct
-    uint8_t start_countdown_first = 0x89;
-    uint8_t start_countdown_second = 0x09;
-    for(int i=0; i<9; i++)
-    {
-        if(block->first_countdown_sequence[i] != start_countdown_first)
-        {
-            return -1;
-        }
-        
-        if(block->second_countdown_sequence[i] != start_countdown_second)
-        {
-            return -1;
-        }   
-
-        start_countdown_first--;
-        start_countdown_second--;
-    }
-
-    // Check if checksum is correct
-    uint8_t checksum = 0;
-    uint8_t checksum_backup = 0;
-
-    for(int i=0; i<192; i++)
-    {
-        checksum ^= block->data_payload[i];
-        checksum_backup ^= block->data_payload_backup[i];
-    }   
-
-    if(checksum != block->checksum)
-    {
-        printf("Checksum error in payload data\n");
-        return -1;
-    }
-
-    if(checksum_backup != block->checksum_backup)
-    {
-        printf("Checksum error in payload backup data\n");
-        return -1;
-    }
-
-    return 0; 
-}
-
-bool FindAllKernalBlocks(uint8_t *data, uint32_t size)
-{
-    std::vector<ByteVector> block_list;
-
     uint32_t pos = 0X14;    // start data's at position 0x14 in TAP file 
     bool error;
     bool start_new_block;
@@ -399,11 +378,11 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size)
 
     printf("Block Count: %ld\n", block_list.size());
 
-    for(int i=0; i<block_list.size(); i++)
+    for(int i=0; i < (int)block_list.size(); i++)
     {
         printf("Block %d Size: %ld [CRC: ", i, block_list[i].size());
         uint8_t crc = 0;
-        for(int j=9; j<block_list[i].size()-1; j++)
+        for(int j=9; j < (int)block_list[i].size()-1; j++)
         {
             crc ^= block_list[i][j];
         }
@@ -415,21 +394,25 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size)
         {
             printf("Error]\n");
         }
-
     }
-
 
     return false;
 }
 
+/// @brief  Analyze the TAP file and find all kernal blocks
+/// @param tap_file  Path to the TAP file
+/// @note   The TAP file must be in binary format
+///         and must start with the string "C64-TAPE-RAW".
+///         The version number must be present.
+///         The function will read the TAP file and find all kernal blocks.
 void AnalyzeTAPFile(const char *tap_file)
 {
-    std::ifstream tap_file_stream(tap_file, std::ios::binary);
+    std::ifstream tap_file_stream(tap_file, ios::binary);
     if(tap_file_stream.is_open())
     {
-        tap_file_stream.seekg(0, std::ios::end);
-        std::streamoff file_size = tap_file_stream.tellg();
-        tap_file_stream.seekg(0, std::ios::beg);
+        tap_file_stream.seekg(0, ios::end);
+        streamoff file_size = tap_file_stream.tellg();
+        tap_file_stream.seekg(0, ios::beg);
 
         uint8_t *tap_data = new uint8_t[file_size];
         tap_file_stream.read((char*)tap_data, file_size);
@@ -441,7 +424,7 @@ void AnalyzeTAPFile(const char *tap_file)
         {
             printf("TAP file is valid.\n");
             printf("TAP version: %d\n",tap_version);
-            FindAllKernalBlocks(tap_data, (uint32_t)file_size);
+            FindAllKernalBlocks(tap_data, (uint32_t)file_size, current_block_list);
         }
         else
         {
