@@ -10,7 +10,7 @@
     "type": "cppdbg",
     "request": "launch",
     "program": "${workspaceFolder}/build/c64_tap_tool",
-    "args": ["--analyze", "${workspaceFolder}/build/hello_world.tap"],
+    "args": ["-a", "${workspaceFolder}/build/ABC-Turbo.tap"],
     "stopAtEntry": false,
     "cwd": "${workspaceFolder}",
     "environment": [],

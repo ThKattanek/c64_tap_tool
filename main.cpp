@@ -35,11 +35,15 @@ typedef std::vector<uint8_t> ByteVector;
 vector<ByteVector> current_block_list;
 
 void AnalyzeTAPFile(const char *tap_file);
+void ExportTAPFile(const char *tap_file);
 
 // Defineren aller Kommandozeilen Parameter
-enum CMD_COMMAND {CMD_HELP,CMD_VERSION, CMD_ANALYZE};
+enum CMD_COMMAND {CMD_HELP, CMD_VERSION, CMD_ANALYZE, CMD_EXPORT, CMD_CONVERT_TO_TAP, CMD_CONVERT_TO_WAV};
 static const CMD_STRUCT command_list[]{
-    {CMD_ANALYZE, "a", "analyze", "Analyzes the TAP file.", 1},
+    {CMD_ANALYZE, "a", "analyze", "Analyzes the tap file. (c64_tap_tool --analyze <filename>)", 1},
+    {CMD_EXPORT, "e", "export", "Export all files in this tap file as prg. (c64_tap_tool --export <filename>)", 1},
+    {CMD_CONVERT_TO_TAP, "", "conv2tap", "Convert a prg to a tap file. (c64_tap_tool --conv2tap <prg_filename> <tap_filename>)", 2},
+    {CMD_CONVERT_TO_WAV, "", "conv2wav", "Convert a prg to a wav file. (c64_tap_tool --conv2wav <prg_filename> <wav_filename>)", 2},
     {CMD_HELP, "?", "help", "This text.", 0},
     {CMD_VERSION, "", "version", "Displays the current version number.", 0}
 };
@@ -62,8 +66,10 @@ uint8_t tap_version;
 struct KERNAL_HEADER_BLOCK    // C64 Kernal Header TAP Block
 {
     uint8_t header_type;
-    uint16_t start_address;
-    uint16_t end_address;
+    uint8_t start_address_low;
+    uint8_t start_address_high;
+    uint8_t end_address_low;
+    uint8_t end_address_high;
     char filename_dispayed[16];
     char filename_not_displayed[171];
 };
@@ -100,6 +106,32 @@ int main(int argc, char *argv[])
                     return(-1);
                 }
             }
+
+            if(cmd->GetCommand(i) == CMD_EXPORT)
+            {
+                if(cmd->GetCommandCount() > i+1)
+                {
+                    const char *tap_file = cmd->GetArg(i+1);
+                    printf("Export all files in this TAP file as PRG: %s\n",tap_file);
+                    ExportTAPFile(tap_file);
+                }
+                else
+                {
+                    printf("Missing TAP file.\n");
+                    return(-1);
+                }
+            }
+
+            if(cmd->GetCommand(i) == CMD_CONVERT_TO_TAP)
+            {
+                printf("Convert PRG to TAP file.\n");
+            }
+
+            if(cmd->GetCommand(i) == CMD_CONVERT_TO_WAV)
+            {
+                printf("Convert PRG to WAV file.\n");
+            }
+
         }
 
         if(cmd->FoundCommand(CMD_HELP))
@@ -459,13 +491,33 @@ void AnalyzeTAPFile(const char *tap_file)
             {
                 for(int i=0; i < (int)current_block_list.size(); i++)
                 {
-                    KERNAL_HEADER_BLOCK *kernal_header_block = (KERNAL_HEADER_BLOCK *)&current_block_list[i][8];
-                    if(current_block_list[i].size() == 202 && (kernal_header_block->header_typer >= 0x01) && (kernal_header_block->header_typer <= 0x05))
+                    KERNAL_HEADER_BLOCK *kernal_header_block = (KERNAL_HEADER_BLOCK *)&current_block_list[i][9];
+                    if(current_block_list[i].size() == 202 && (kernal_header_block->header_type >= 0x01) && (kernal_header_block->header_type <= 0x05))
                     {
-                        printf("Block %d: Kernal Header Block\n", i);
-                        printf("Start Address: %4.4x\n", kernal_header_block->start_address);
-                        printf("End Address: %4.4x\n", kernal_header_block->end_address);
+                        printf("Block %d: Kernal Header Block", i);
+                        if((current_block_list[i][0] & 0x80) != 0x80)
+                        {
+                            printf(" [BACKUP]\n");
+                        }
+                        else
+                        {
+                            printf("\n");
+                        }
+                        printf("Start Address: %4.4x\n", kernal_header_block->start_address_low | (kernal_header_block->start_address_high << 8));
+                        printf("End Address: %4.4x\n", kernal_header_block->end_address_low | (kernal_header_block->end_address_high << 8));
+                        for(int j=15; j>0; j--)
+                        {
+                            if(kernal_header_block->filename_dispayed[j] == 0x20)
+                            {
+                                kernal_header_block->filename_dispayed[j] = 0;
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
                         kernal_header_block->filename_dispayed[15] = 0;
+                        printf("Filename: %s\n", kernal_header_block->filename_dispayed);
                         printf("Filename displayed: %s\n", kernal_header_block->filename_dispayed);
                     }
                 }
@@ -485,5 +537,32 @@ void AnalyzeTAPFile(const char *tap_file)
     else
     {
         printf("Error opening TAP file: %s\n",tap_file);
+    }
+}
+
+void ExportTAPFile(const char *tap_file)
+{
+    AnalyzeTAPFile(tap_file);
+
+    for(int i=0; i < (int)current_block_list.size(); i++)
+    {
+        KERNAL_HEADER_BLOCK *kernal_header_block = (KERNAL_HEADER_BLOCK *)&current_block_list[i][9];
+        if(current_block_list[i].size() == 202 && (kernal_header_block->header_type >= 0x01) && ((current_block_list[i][0] & 0x80) == 0x80))
+        {
+            kernal_header_block->filename_dispayed[15] = 0;
+            printf("Exporting Block %d: %s\n", i, kernal_header_block->filename_dispayed);
+            std::ofstream prg_file(kernal_header_block->filename_dispayed + std::string(".prg"), ios::binary);
+            if(prg_file.is_open())
+            {
+                prg_file.write((const char*)&kernal_header_block->start_address_low, 1);
+                prg_file.write((const char*)&kernal_header_block->start_address_high, 1);
+                prg_file.write((char*)&current_block_list[i+2][9], current_block_list[i+2].size()-9);
+                prg_file.close();
+            }
+            else
+            {
+                printf("Error opening PRG file: %s\n",kernal_header_block->filename_dispayed);
+            }
+        }
     }
 }
