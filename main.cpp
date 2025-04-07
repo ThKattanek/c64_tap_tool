@@ -295,6 +295,7 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
                 if(sync_end - sync_start >= 2) 
                 {
                     start_new_block = true;
+                    printf("Sync found: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
                 }
             }
 
@@ -344,6 +345,7 @@ uint8_t GetNextKernalByte(uint8_t *data, uint32_t size, uint32_t &pos, bool &err
                 if(sync_end - sync_start >= 2)
                 {
                     start_new_block = true;
+                    printf("Sync found: %4.4x - %4.4x (%d pulses)\n",sync_start,sync_end, sync_end - sync_start);
                 }
             }
             sync_pulse_count = 0;
@@ -565,4 +567,31 @@ void ExportTAPFile(const char *tap_file)
             }
         }
     }
+}
+
+bool ConvertPRGToTAP(const char *prg_file, const char *tap_file)
+{
+    // TODO: Implement the conversion from PRG to TAP
+    // TAP write 
+    // C64 PAL Frquency: 985248 Hz
+    // ● a short 365.4µs pulse (2737 Hz) PAL - 360 Takte    
+    // ● a medium 531.4µs pulse (1882Hz) PAL - 524 Takte
+    // ● a long 697.6µs pulse (1434 Hz) PAL - 687 Takte
+
+    // 1. Short pulse (27135)
+    // 2. Countdown Sequence 0x89 0x88 0x87 0x86 0x85 0x84 0x83 0x82 0x81
+    // 3. Kernal Header Block
+    // 3a. EndOfData Maker
+    // 4. Short pulse (79)
+    // 5. Countdown Sequence 0x09 0x08 0x07 0x06 0x05 0x04 0x03 0x02 0x01
+    // 6. Kernal Header Block (Backup)
+    // 7. Short pulse (5671)
+    // 9. Countdown Sequence 0x89 0x88 0x87 0x86 0x85 0x84 0x83 0x82 0x81
+    // 10. Kernal Data Block
+    // 10a. EndOfData Maker
+    // 11. Short pulse (79)
+    // 12. Countdown Sequence 0x09 0x08 0x07 0x06 0x05 0x04 0x03 0x02 0x01
+    // 13. Kernal Data Block (Backup)
+
+    return true;
 }
