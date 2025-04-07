@@ -61,7 +61,7 @@ uint8_t tap_version;
 ///         represent addresses from 0x0000 to 0xFFFF.
 struct KERNAL_HEADER_BLOCK    // C64 Kernal Header TAP Block
 {
-    uint8_t header_typer;
+    uint8_t header_type;
     uint16_t start_address;
     uint16_t end_address;
     char filename_dispayed[16];
@@ -342,7 +342,9 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size, vector<ByteVector> &block
     uint32_t pos = 0X14;    // start data's at position 0x14 in TAP file 
     bool error;
     bool start_new_block;
+    bool ret = true;
 
+    block_list.clear();
     ByteVector *current_block;
 
     while(pos < size)
@@ -367,6 +369,7 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size, vector<ByteVector> &block
         {
             if(pos < size)
             {
+                ret = false;
                 printf("Error reading byte at position %4.4x\n",pos);
             }
             else
@@ -378,6 +381,7 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size, vector<ByteVector> &block
 
     printf("Block Count: %ld\n", block_list.size());
 
+    // CRC Checking
     for(int i=0; i < (int)block_list.size(); i++)
     {
         printf("Block %d Size: %ld [CRC: ", i, block_list[i].size());
@@ -388,15 +392,42 @@ bool FindAllKernalBlocks(uint8_t *data, uint32_t size, vector<ByteVector> &block
         }
         if(crc == block_list[i].back())
         {
-            printf("OK]\n");
+            printf("OK]");
         }
         else
         {
+            ret = false;
+            printf("Error]");
+        }
+    
+
+        uint8_t countdown;
+        
+        if((i & 1) == 1)
+            countdown = 0x09; 
+        else
+            countdown = 0x89;
+
+        bool countdown_io = true;
+        for(int j=0; j<9; j++)
+        {
+            if(block_list[i][j] != countdown)
+                countdown_io = false;
+            countdown--;
+        }
+
+        printf(" - [Countdown: ");
+        
+        if(countdown_io)
+            printf("OK]\n");
+        else
+        {
+            ret = false;
             printf("Error]\n");
         }
     }
 
-    return false;
+    return ret;
 }
 
 /// @brief  Analyze the TAP file and find all kernal blocks
@@ -424,7 +455,25 @@ void AnalyzeTAPFile(const char *tap_file)
         {
             printf("TAP file is valid.\n");
             printf("TAP version: %d\n",tap_version);
-            FindAllKernalBlocks(tap_data, (uint32_t)file_size, current_block_list);
+            if(FindAllKernalBlocks(tap_data, (uint32_t)file_size, current_block_list))
+            {
+                for(int i=0; i < (int)current_block_list.size(); i++)
+                {
+                    KERNAL_HEADER_BLOCK *kernal_header_block = (KERNAL_HEADER_BLOCK *)&current_block_list[i][8];
+                    if(current_block_list[i].size() == 202 && (kernal_header_block->header_typer >= 0x01) && (kernal_header_block->header_typer <= 0x05))
+                    {
+                        printf("Block %d: Kernal Header Block\n", i);
+                        printf("Start Address: %4.4x\n", kernal_header_block->start_address);
+                        printf("End Address: %4.4x\n", kernal_header_block->end_address);
+                        kernal_header_block->filename_dispayed[15] = 0;
+                        printf("Filename displayed: %s\n", kernal_header_block->filename_dispayed);
+                    }
+                }
+            }
+            else
+            {
+                printf("Error finding kernal blocks.\n");
+            }
         }
         else
         {
