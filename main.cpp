@@ -783,17 +783,21 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
     prg_stream.read(reinterpret_cast<char*>(&kernal_header_block.start_address_high), 1);
     prg_file_size -= 2;
 
-    uint16_t end_adress = (kernal_header_block.start_address_low | (kernal_header_block.start_address_high << 8)) - 1;
+    uint32_t temp_address = (kernal_header_block.start_address_low | (kernal_header_block.start_address_high << 8));
+    if (temp_address > 0)
+        temp_address -= 1;
+        
+    uint16_t end_adress = static_cast<uint16_t>(temp_address);
     end_adress += static_cast<uint16_t>(prg_file_size);
-    kernal_header_block.end_address_low = end_adress & (uint16_t)0x00FF;
-    kernal_header_block.end_address_high = (end_adress >> 8) & (uint16_t)0x00FF;
+    kernal_header_block.end_address_low = static_cast<uint8_t>(end_adress & 0x00FF);
+    kernal_header_block.end_address_high = static_cast<uint8_t>((end_adress >> 8) & 0x00FF);
 
     kernal_header_block.header_type = 0x01; // Kernal Header Block
     memset(kernal_header_block.filename_dispayed, 0x20, sizeof(kernal_header_block.filename_dispayed));
     memset(kernal_header_block.filename_not_displayed, 0x20, sizeof(kernal_header_block.filename_not_displayed));
 
-    char *filename_displayed = "C64-TAP-TOOL";
-    char *filename_not_displayed = "A64-TAP-TOOL";
+    const char *filename_displayed = "C64-TAP-TOOL";
+    const char *filename_not_displayed = "";
 
     strncpy(kernal_header_block.filename_dispayed, filename_displayed, strlen(filename_displayed));
     strncpy(kernal_header_block.filename_not_displayed, filename_not_displayed, strlen(filename_not_displayed));
