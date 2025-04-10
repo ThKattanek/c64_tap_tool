@@ -769,7 +769,7 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
 
     // Create the WAV File for the C64
     // Start with 27135 short pulses (10sec Syncronisation)
-    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 27135/5);
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 27135);
 
     // Countdown Sequence (none backup)
     for (uint8_t countdown = 0x89; countdown >= 0x81; countdown--)
