@@ -628,7 +628,7 @@ void WriteWAVHeader(std::ofstream &wav_file, uint32_t sample_rate, uint32_t num_
     wav_file.write(reinterpret_cast<const char*>(&data_chunk_size), 4); // Subchunk2 Size
 }
 
-inline uint32_t WriteShortPulse(std::ofstream &wav_stream, uint32_t sample_rate, uint32_t pulse_count, float amplitude = 1.0f) 
+inline uint32_t WriteWAVShortPulse(std::ofstream &wav_stream, uint32_t sample_rate, uint32_t pulse_count, float amplitude = 1.0f) 
 {
     const float frequency = 2737.0f; // Frequenz des Shortpulses in Hz
     const uint32_t samples_per_period = static_cast<uint32_t>(static_cast<float>(sample_rate) / frequency);
@@ -644,7 +644,7 @@ inline uint32_t WriteShortPulse(std::ofstream &wav_stream, uint32_t sample_rate,
     return pulse_count * samples_per_period;
 }
 
-inline uint32_t WriteMediumPulse(std::ofstream &wav_stream, uint32_t sample_rate, uint32_t pulse_count, float amplitude = 1.0f) 
+inline uint32_t WriteWAVMediumPulse(std::ofstream &wav_stream, uint32_t sample_rate, uint32_t pulse_count, float amplitude = 1.0f) 
 {
     const float frequency = 1882.0f; // Frequenz des Mediumpulses in Hz
     const uint32_t samples_per_period = static_cast<uint32_t>(static_cast<float>(sample_rate) / frequency);
@@ -660,7 +660,7 @@ inline uint32_t WriteMediumPulse(std::ofstream &wav_stream, uint32_t sample_rate
     return pulse_count * samples_per_period;
 }
 
-inline uint32_t WriteLongPulse(std::ofstream &wav_stream, uint32_t sample_rate, uint32_t pulse_count, float amplitude = 1.0f) 
+inline uint32_t WriteWAVLongPulse(std::ofstream &wav_stream, uint32_t sample_rate, uint32_t pulse_count, float amplitude = 1.0f) 
 {
     const float frequency = 1434.0f; // Frequenz des Longpulses in Hz
     const uint32_t samples_per_period = static_cast<uint32_t>(static_cast<float>(sample_rate) / frequency);
@@ -676,14 +676,14 @@ inline uint32_t WriteLongPulse(std::ofstream &wav_stream, uint32_t sample_rate, 
     return pulse_count * samples_per_period;
 }
 
-inline uint32_t WriteByteInWav(std::ofstream &wav_stream, uint32_t sample_rate, uint8_t byte, float amplitude = 1.0f) 
+inline uint32_t WriteWAVByte(std::ofstream &wav_stream, uint32_t sample_rate, uint8_t byte, float amplitude = 1.0f) 
 {
     uint32_t num_samples = 0;
 
     // Write the byte in the WAV file
     // ByteMaker (Long Pulse + Medium Pulse)
-    num_samples += WriteLongPulse(wav_stream, sample_rate, 1, amplitude);
-    num_samples += WriteMediumPulse(wav_stream, sample_rate, 1, amplitude);
+    num_samples += WriteWAVLongPulse(wav_stream, sample_rate, 1, amplitude);
+    num_samples += WriteWAVMediumPulse(wav_stream, sample_rate, 1, amplitude);
 
     // Write the bits of the byte (LSB first)
     uint8_t parity_bit = 1;
@@ -692,25 +692,25 @@ inline uint32_t WriteByteInWav(std::ofstream &wav_stream, uint32_t sample_rate, 
         if (byte & (1 << i)) 
         {
             // Bit is 1
-            num_samples += WriteMediumPulse(wav_stream, sample_rate, 1, amplitude);
-            num_samples += WriteShortPulse(wav_stream, sample_rate, 1, amplitude);
+            num_samples += WriteWAVMediumPulse(wav_stream, sample_rate, 1, amplitude);
+            num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 1, amplitude);
             parity_bit ^= 1;
         } else 
         {
             // Bit is 0
-            num_samples += WriteShortPulse(wav_stream, sample_rate, 1, amplitude);
-            num_samples += WriteMediumPulse(wav_stream, sample_rate, 1, amplitude);
+            num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 1, amplitude);
+            num_samples += WriteWAVMediumPulse(wav_stream, sample_rate, 1, amplitude);
         }
     }
-    // Write the parity bit
+    // Write the parity bit (odd parity)
     if (parity_bit == 1) 
     {
-        num_samples += WriteMediumPulse(wav_stream, sample_rate, 1, amplitude);
-        num_samples += WriteShortPulse(wav_stream, sample_rate, 1, amplitude);
+        num_samples += WriteWAVMediumPulse(wav_stream, sample_rate, 1, amplitude);
+        num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 1, amplitude);
     } else 
     {
-        num_samples += WriteShortPulse(wav_stream, sample_rate, 1, amplitude);
-        num_samples += WriteMediumPulse(wav_stream, sample_rate, 1, amplitude);
+        num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 1, amplitude);
+        num_samples += WriteWAVMediumPulse(wav_stream, sample_rate, 1, amplitude);
     }
 
     return num_samples;
@@ -769,12 +769,12 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
 
     // Create the WAV File for the C64
     // Start with 27135 short pulses (10sec Syncronisation)
-    num_samples += WriteShortPulse(wav_stream, sample_rate, 27135/5);
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 27135/5);
 
     // Countdown Sequence (none backup)
     for (uint8_t countdown = 0x89; countdown >= 0x81; countdown--)
     {
-        num_samples += WriteByteInWav(wav_stream, sample_rate, countdown);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, countdown);
     }
 
     // Kernal Header Block
@@ -807,22 +807,22 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
     for(int i=0; i < (int)sizeof(kernal_header_block); i++)
     {
         crc ^= ((uint8_t*)&kernal_header_block)[i];
-        num_samples += WriteByteInWav(wav_stream, sample_rate, ((uint8_t*)&kernal_header_block)[i]);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, ((uint8_t*)&kernal_header_block)[i]);
     }
-    num_samples += WriteByteInWav(wav_stream, sample_rate, crc);
+    num_samples += WriteWAVByte(wav_stream, sample_rate, crc);
 
     // Write the EndOfData Maker
-    num_samples += WriteLongPulse(wav_stream, sample_rate, 1); 
-    num_samples += WriteShortPulse(wav_stream, sample_rate, 1);
+    num_samples += WriteWAVLongPulse(wav_stream, sample_rate, 1); 
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 1);
 
     // Start with 79 short pulses (10sec Syncronisation)
-    num_samples += WriteShortPulse(wav_stream, sample_rate, 79);
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 79);
 
 
     // Countdown Sequence (backup)
     for (uint8_t countdown = 0x09; countdown >= 0x01; countdown--)
     {
-        num_samples += WriteByteInWav(wav_stream, sample_rate, countdown);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, countdown);
     }
 
     // Kernal Header Block (Backup)
@@ -830,17 +830,17 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
     for(int i=0; i < (int)sizeof(kernal_header_block); i++)
     {
         crc ^= ((uint8_t*)&kernal_header_block)[i];
-        num_samples += WriteByteInWav(wav_stream, sample_rate, ((uint8_t*)&kernal_header_block)[i]);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, ((uint8_t*)&kernal_header_block)[i]);
     }
-    num_samples += WriteByteInWav(wav_stream, sample_rate, crc);
+    num_samples += WriteWAVByte(wav_stream, sample_rate, crc);
 
     // Start with 5671 short pulses (10sec Syncronisation)
-    num_samples += WriteShortPulse(wav_stream, sample_rate, 5671);
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 5671);
 
     // Countdown Sequence (none backup)
     for (uint8_t countdown = 0x89; countdown >= 0x81; countdown--)
     {
-        num_samples += WriteByteInWav(wav_stream, sample_rate, countdown);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, countdown);
     }
 
     // Kernal Data Block
@@ -851,21 +851,21 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
     {
         prg_stream.read(reinterpret_cast<char*>(&byte), 1);
         crc ^= byte;
-        num_samples += WriteByteInWav(wav_stream, sample_rate, byte);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, byte);
     }
-    num_samples += WriteByteInWav(wav_stream, sample_rate, crc);
+    num_samples += WriteWAVByte(wav_stream, sample_rate, crc);
     
     // Write the EndOfData Maker        
-    num_samples += WriteLongPulse(wav_stream, sample_rate, 1);
-    num_samples += WriteShortPulse(wav_stream, sample_rate, 1);
+    num_samples += WriteWAVLongPulse(wav_stream, sample_rate, 1);
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 1);
 
     // Start with 79 short pulses (10sec Syncronisation)
-    num_samples += WriteShortPulse(wav_stream, sample_rate, 79);    
+    num_samples += WriteWAVShortPulse(wav_stream, sample_rate, 79);    
 
     // Countdown Sequence (backup)
     for (uint8_t countdown = 0x09; countdown >= 0x01; countdown--)
     {
-        num_samples += WriteByteInWav(wav_stream, sample_rate, countdown);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, countdown);
     }
 
     // Kernal Data Block (Backup)
@@ -875,9 +875,9 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
     {
         prg_stream.read(reinterpret_cast<char*>(&byte), 1);
         crc ^= byte;
-        num_samples += WriteByteInWav(wav_stream, sample_rate, byte);
+        num_samples += WriteWAVByte(wav_stream, sample_rate, byte);
     }
-    num_samples += WriteByteInWav(wav_stream, sample_rate, crc);
+    num_samples += WriteWAVByte(wav_stream, sample_rate, crc);
 
     // Update the WAV header with the correct data chunk size
     wav_stream.seekp(0, ios::beg);
