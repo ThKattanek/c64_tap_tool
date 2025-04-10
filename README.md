@@ -17,7 +17,7 @@
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/username/c64_tap_tool.git
+   git clone https://github.com/ThKattanek/c64_tap_tool.git
    cd c64_tap_tool
    ```
 
