@@ -574,7 +574,77 @@ void ExportTAPFile(const char *tap_file)
     }
 }
 
-bool ConvertPRGToTAP(const char *prg_file, const char *tap_file)
+inline uint32_t WriteTAPShortPulse(std::ofstream &tap_stream, uint32_t pulse_count) 
+{
+    uint8_t short_pulse_len = SHORT_PULSE_LENGTH >> 3;
+    for (uint32_t pulse = 0; pulse < pulse_count; ++pulse) 
+    {
+        tap_stream.write(reinterpret_cast<const char*>(&short_pulse_len), 1);
+    }
+    return pulse_count;
+}
+
+inline uint32_t WriteTAPMediumPulse(std::ofstream &tap_stream, uint32_t pulse_count) 
+{
+    uint8_t medium_pulse_len = MEDIUM_PULSE_LENGTH >> 3;
+    for (uint32_t pulse = 0; pulse < pulse_count; ++pulse) 
+    {
+        tap_stream.write(reinterpret_cast<const char*>(&medium_pulse_len), 1);
+    }
+    return pulse_count;
+}
+
+inline uint32_t WriteTAPLongPulse(std::ofstream &tap_stream, uint32_t pulse_count) 
+{
+    uint8_t long_pulse_len = LONG_PULSE_LENGTH >> 3;
+    for (uint32_t pulse = 0; pulse < pulse_count; ++pulse) 
+    {
+        tap_stream.write(reinterpret_cast<const char*>(&long_pulse_len), 1);
+    }
+    return pulse_count;
+}
+
+inline uint32_t WriteTAPByte(std::ofstream &tap_stream, uint8_t byte) 
+{
+    uint32_t num_samples = 0;
+
+    // Write the byte in the TAP file
+    // ByteMaker (Long Pulse + Medium Pulse)
+    num_samples += WriteTAPLongPulse(tap_stream, 1);
+    num_samples += WriteTAPMediumPulse(tap_stream, 1);
+
+    // Write the bits of the byte (LSB first)
+    uint8_t parity_bit = 1;
+    for (int i = 0; i < 8; ++i)     
+    {
+        if (byte & (1 << i)) 
+        {
+            // Bit is 1
+            num_samples += WriteTAPMediumPulse(tap_stream, 1);
+            num_samples += WriteTAPShortPulse(tap_stream, 1);
+            parity_bit ^= 1;
+        } else 
+        {
+            // Bit is 0
+            num_samples += WriteTAPShortPulse(tap_stream, 1);
+            num_samples += WriteTAPMediumPulse(tap_stream, 1);
+        }
+    }
+    // Write the parity bit (odd parity)
+    if (parity_bit == 1) 
+    {
+        num_samples += WriteTAPMediumPulse(tap_stream, 1);
+        num_samples += WriteTAPShortPulse(tap_stream, 1);
+    } else 
+    {
+        num_samples += WriteTAPShortPulse(tap_stream, 1);
+        num_samples += WriteTAPMediumPulse(tap_stream, 1);
+    }
+
+    return num_samples;
+}
+
+bool ConvertPRGToTAP(const char *prg_file_name, const char *tap_file_name)
 {
     // TODO: Implement the conversion from PRG to TAP
     // TAP write 
@@ -597,6 +667,162 @@ bool ConvertPRGToTAP(const char *prg_file, const char *tap_file)
     // 11. Short pulse (79)
     // 12. Countdown Sequence 0x09 0x08 0x07 0x06 0x05 0x04 0x03 0x02 0x01
     // 13. Kernal Data Block (Backup)
+
+    ifstream prg_stream;
+    ofstream tap_stream;
+    prg_stream.open(prg_file_name, ios::binary);
+    if(!prg_stream.is_open())
+    {
+        printf("Error opening PRG file: %s\n", prg_file_name);
+        return false;
+    }
+
+    // PRG file size    
+    prg_stream.seekg(0, ios::end);
+    streamoff prg_file_size = prg_stream.tellg();
+    prg_stream.seekg(0, ios::beg);
+
+    tap_stream.open(tap_file_name, ios::binary);
+    if(!tap_stream.is_open())
+    {
+        printf("Error opening TAP file: %s\n", tap_file_name);
+        prg_stream.close();
+        return false;
+    }
+
+    // TAP Header
+    tap_stream.write("C64-TAPE-RAW", 12); // TAP Header
+    tap_stream.write(reinterpret_cast<const char*>(&tap_version), 1); // TAP Version
+    uint8_t tap_header[3] = {0x00, 0x00, 0x00}; // TAP Header (Future expanison)
+    tap_stream.write(reinterpret_cast<const char*>(tap_header), sizeof(tap_header));
+    uint32_t tap_data_size = 0; // TAP Data Size
+    tap_stream.write(reinterpret_cast<const char*>(&tap_data_size), 4); // TAP Data Size
+
+    // Create the WAV File for the C64
+    // Start with 27135 short pulses (10sec Syncronisation)
+    tap_data_size += WriteTAPShortPulse(tap_stream, 27135);
+
+    // Countdown Sequence (none backup)
+    for (uint8_t countdown = 0x89; countdown >= 0x81; countdown--)
+    {
+        tap_data_size += WriteTAPByte(tap_stream, countdown);
+    }
+
+    // Kernal Header Block
+    KERNAL_HEADER_BLOCK kernal_header_block;
+    prg_stream.read(reinterpret_cast<char*>(&kernal_header_block.start_address_low), 1);
+    prg_stream.read(reinterpret_cast<char*>(&kernal_header_block.start_address_high), 1);
+    prg_file_size -= 2;
+
+    uint32_t temp_address = (kernal_header_block.start_address_low | (kernal_header_block.start_address_high << 8));
+    if (temp_address > 0)
+        temp_address -= 1;
+        
+    uint16_t end_adress = static_cast<uint16_t>(temp_address);
+    end_adress += static_cast<uint16_t>(prg_file_size);
+    kernal_header_block.end_address_low = static_cast<uint8_t>(end_adress & 0x00FF);
+    kernal_header_block.end_address_high = static_cast<uint8_t>((end_adress >> 8) & 0x00FF);
+
+    kernal_header_block.header_type = 0x01; // Kernal Header Block
+    memset(kernal_header_block.filename_dispayed, 0x20, sizeof(kernal_header_block.filename_dispayed));
+    memset(kernal_header_block.filename_not_displayed, 0x20, sizeof(kernal_header_block.filename_not_displayed));
+
+    const char *filename_displayed = "C64-TAP-TOOL";
+    const char *filename_not_displayed = "";
+
+    strncpy(kernal_header_block.filename_dispayed, filename_displayed, strlen(filename_displayed));
+    strncpy(kernal_header_block.filename_not_displayed, filename_not_displayed, strlen(filename_not_displayed));
+   
+    // Write the Kernal Header Block to the WAV file
+    uint8_t crc = 0;
+    for(int i=0; i < (int)sizeof(kernal_header_block); i++)
+    {
+        crc ^= ((uint8_t*)&kernal_header_block)[i];
+        tap_data_size += WriteTAPByte(tap_stream, ((uint8_t*)&kernal_header_block)[i]);
+    }
+    tap_data_size += WriteTAPByte(tap_stream, crc);
+
+    // Write the EndOfData Maker
+    tap_data_size += WriteTAPLongPulse(tap_stream, 1); 
+    tap_data_size += WriteTAPShortPulse(tap_stream, 1);
+
+    // Start with 79 short pulses
+    tap_data_size += WriteTAPShortPulse(tap_stream, 79);
+
+    // Countdown Sequence (backup)
+    for (uint8_t countdown = 0x09; countdown >= 0x01; countdown--)
+    {
+        tap_data_size += WriteTAPByte(tap_stream, countdown);
+    }
+
+    // Kernal Header Block (Backup)
+    crc = 0;
+    for(int i=0; i < (int)sizeof(kernal_header_block); i++)
+    {
+        crc ^= ((uint8_t*)&kernal_header_block)[i];
+        tap_data_size += WriteTAPByte(tap_stream, ((uint8_t*)&kernal_header_block)[i]);
+    }
+    tap_data_size += WriteTAPByte(tap_stream, crc);
+
+    // Start with 5671 short pulses (2sec Syncronisation)
+    tap_data_size += WriteTAPShortPulse(tap_stream, 5671);
+
+    // Countdown Sequence (none backup)
+    for (uint8_t countdown = 0x89; countdown >= 0x81; countdown--)
+    {
+        tap_data_size += WriteTAPByte(tap_stream, countdown);
+    }
+
+    // Kernal Data Block
+    // Write the PRG file data to the WAV file
+    crc = 0;
+    uint8_t byte;
+    for(int i=0; i < (int)prg_file_size; i++)
+    {
+        prg_stream.read(reinterpret_cast<char*>(&byte), 1);
+        crc ^= byte;
+        tap_data_size += WriteTAPByte(tap_stream, byte);
+    }
+    tap_data_size += WriteTAPByte(tap_stream, crc);
+    
+    // Write the EndOfData Maker        
+    tap_data_size += WriteTAPLongPulse(tap_stream, 1);
+    tap_data_size += WriteTAPShortPulse(tap_stream, 1);
+
+    // Start with 79 short pulses (10sec Syncronisation)
+    tap_data_size += WriteTAPShortPulse(tap_stream, 79);    
+
+    // Countdown Sequence (backup)
+    for (uint8_t countdown = 0x09; countdown >= 0x01; countdown--)
+    {
+        tap_data_size += WriteTAPByte(tap_stream, countdown);
+    }
+
+    // Kernal Data Block (Backup)
+    prg_stream.seekg(2, ios::beg);
+    crc = 0;
+    for(int i=0; i < (int)prg_file_size; i++)
+    {
+        prg_stream.read(reinterpret_cast<char*>(&byte), 1);
+        crc ^= byte;
+        tap_data_size += WriteTAPByte(tap_stream, byte);
+    }
+    tap_data_size += WriteTAPByte(tap_stream, crc);
+
+
+
+
+
+
+
+
+
+    // Update the TAP Data Size
+    tap_stream.seekp(16, ios::beg);
+    tap_stream.write(reinterpret_cast<const char*>(&tap_data_size), 4); // TAP Data Size
+
+    prg_stream.close();
+    tap_stream.close();
 
     return true;
 }
