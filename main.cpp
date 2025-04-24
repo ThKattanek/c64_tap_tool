@@ -715,8 +715,6 @@ bool ConvertPRGToTAP(const char *prg_file_name, const char *tap_file_name)
     prg_file_size -= 2;
 
     uint32_t temp_address = (kernal_header_block.start_address_low | (kernal_header_block.start_address_high << 8));
-    if (temp_address > 0)
-        temp_address -= 1;
         
     uint16_t end_adress = static_cast<uint16_t>(temp_address);
     end_adress += static_cast<uint16_t>(prg_file_size);
@@ -809,13 +807,9 @@ bool ConvertPRGToTAP(const char *prg_file_name, const char *tap_file_name)
     }
     tap_data_size += WriteTAPByte(tap_stream, crc);
 
-
-
-
-
-
-
-
+    // Write the EndOfData Maker (Optional)
+    //tap_data_size += WriteTAPLongPulse(tap_stream, 1); 
+    //tap_data_size += WriteTAPShortPulse(tap_stream, 1);
 
     // Update the TAP Data Size
     tap_stream.seekp(16, ios::beg);
@@ -1010,8 +1004,6 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
     prg_file_size -= 2;
 
     uint32_t temp_address = (kernal_header_block.start_address_low | (kernal_header_block.start_address_high << 8));
-    if (temp_address > 0)
-        temp_address -= 1;
         
     uint16_t end_adress = static_cast<uint16_t>(temp_address);
     end_adress += static_cast<uint16_t>(prg_file_size);
@@ -1104,6 +1096,10 @@ bool ConvertPRGToWAV(const char *prg_file_name, const char *wav_file_name)
         num_samples += WriteWAVByte(wav_stream, sample_rate, byte);
     }
     num_samples += WriteWAVByte(wav_stream, sample_rate, crc);
+
+    // Write the EndOfData Maker (Optional)
+    //num_samples += WriteTAPLongPulse(tap_stream, 1); 
+    //num_samples += WriteTAPShortPulse(tap_stream, 1);
 
     // Update the WAV header with the correct data chunk size
     wav_stream.seekp(0, ios::beg);
