@@ -59,7 +59,7 @@ The tool supports various commands that can be executed from the command line:
 
 - **Convert PRG to TAP**:
   ```bash
-  ./c64_tap_tool --conv2tap <prg_filename> <tap_filename>
+  ./c64_tap_tool --conv2tap <prg_filename> <tap_filename> <prog_name>
   ```
 
 - **Convert PRG to WAV**:
